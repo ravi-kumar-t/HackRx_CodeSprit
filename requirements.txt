@@ -4,7 +4,9 @@ python-dotenv
 google-generativeai
 langchain-google-genai
 langchain-community
+langchain-core
 pydantic
 requests
 PyPDF2
 pypdf
+faiss-cpu
