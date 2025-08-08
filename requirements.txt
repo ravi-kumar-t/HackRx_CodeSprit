@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-dotenv
+google-generativeai
+langchain-google-genai
+langchain-community
+pydantic
+requests
+PyPDF2

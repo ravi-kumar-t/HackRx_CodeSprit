@@ -1,0 +1,13 @@
+# Virtual environments
+.venv/
+env/
+
+# Sensitive data
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# IDE files
+.vscode/
