@@ -7,3 +7,4 @@ langchain-community
 pydantic
 requests
 PyPDF2
+pypdf
