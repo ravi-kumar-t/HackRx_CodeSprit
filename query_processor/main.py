@@ -18,7 +18,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel as PydanticBaseModel
+from langchain_core.documents import Document
 
 # --- 1. CONFIGURATION ---
 load_dotenv()
@@ -31,7 +31,7 @@ genai.configure(api_key=gemini_api_key)
 app = FastAPI(
     title="HackRx 6.0 Query-Retrieval System",
     description="An LLM-powered RAG system for insurance policy documents.",
-    version="3.0.0",
+    version="4.0.0",
 )
 
 DOCUMENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "documents")
@@ -44,11 +44,11 @@ security = HTTPBearer()
 
 # --- 2. REQUEST MODEL ---
 class HackRxRequest(BaseModel):
-    documents: HttpUrl
+    documents: List[HttpUrl]
     questions: List[str]
 
 # --- 3. RESPONSE MODEL ---
-class UserFriendlyAnswer(PydanticBaseModel):
+class UserFriendlyAnswer(BaseModel):
     message: str = Field(description="A concise, self-contained answer in plain English, 1–3 sentences.")
 
 # --- 4. HELPERS ---
@@ -69,7 +69,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         )
     return True
 
-def ingest_document_from_url(url: str):
+def _get_chunks_from_url(url: str) -> List[Document]:
+    """Downloads a PDF, loads it, and splits it into chunks."""
     try:
         print(f"📄 Downloading document: {url}")
         response = requests.get(url, timeout=30)
@@ -86,15 +87,13 @@ def ingest_document_from_url(url: str):
         chunks = splitter.split_documents(documents)
         print(f"✅ Document split into {len(chunks)} chunks.")
 
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-        vectorstore = FAISS.from_documents(chunks, embeddings)
-
         os.remove(temp_file)
-        return vectorstore
+        return chunks
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Document ingestion failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Document ingestion failed for URL '{url}': {e}")
 
-def filter_context(question: str, docs):
+
+def filter_context(question: str, docs: List[Document]) -> str:
     """Keep only chunks that are highly relevant to the question."""
     question_lower = question.lower()
     relevant_chunks = [
@@ -183,8 +182,16 @@ async def run_hackrx_submission(
 ):
     print("🚀 Starting request.")
     start_time = time.time()
+    
+    all_chunks = []
+    for doc_url in request_body.documents:
+        # Process each document and collect all chunks
+        all_chunks.extend(_get_chunks_from_url(str(doc_url)))
 
-    vectorstore = ingest_document_from_url(str(request_body.documents))
+    # Create a single vector store from all the chunks from all documents
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    vectorstore = FAISS.from_documents(all_chunks, embeddings)
+
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 5})
 
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", temperature=0.0)
